@@ -4,6 +4,8 @@ using NAudio.Wave; // installed with nuget
 using System.Numerics;
 using System.Threading;
 using System.Linq;
+using System.Drawing;
+using System.Drawing.Imaging;
 
 namespace ConsoleVisualizer
 
@@ -11,17 +13,20 @@ namespace ConsoleVisualizer
     class Program
     {
         #region settings
-        static int sensivity = 10;
-        static int maxValue = 40; //max height
-        static string symbol = "#"; //symbol or text i visualizer
-        static int countOfLines = 40; // 1 to 51
+        static int sensivity = 50;
+        static int maxValue = 62; // 1 - 62
+        static string symbol = "$"; //symbol or text in column
+        static int countOfLines = 236/symbol.Length; // 1 to 236
         #endregion
 
         static BufferedWaveProvider bwp;
         static StringBuilder sb = new StringBuilder();
+        static int actuL = 0;//for vertical mode
 
         static int RATE = 48000; // rate of the sound card
         static int BUFFERSIZE = (int)Math.Pow(2, 11); // must be a multiple of 2
+
+        int left = Console.WindowLeft, top = Console.WindowTop;
 
         static void Main(string[] args)
         {
@@ -38,20 +43,15 @@ namespace ConsoleVisualizer
             bwp.DiscardOnBufferOverflow = true;
             wi.StartRecording();
             int left = Console.WindowLeft, top = Console.WindowTop;
-            for (int i=0; ;i++)
+
+            for (; ;)
             {
-                UpdateAudioGraph();
-                Console.SetCursorPosition(0, 0);
-                Console.Clear();
-                Console.Write(sb.ToString());
+                Console.SetCursorPosition(100, 0);
                 sb.Clear();
-                Console.SetCursorPosition(0, 0);
-                if (i % 30 ==0)
-                {
-                    Random rnd = new Random();
-                    Console.ForegroundColor = (ConsoleColor)rnd.Next(1, 15);
-                    i = 0;
-                }
+                UpdateAudioGraph();
+                DrawVertical();
+                Console.Write(sb);
+                actuL = 0;
             }
         }
 
@@ -69,7 +69,7 @@ namespace ConsoleVisualizer
             double[] Ys = new double[frames.Length / BYTES_PER_POINT];
             double[] Ys2 = new double[frames.Length / BYTES_PER_POINT];
             int counter = 0, n = 0;
-            for (int i = 0; i < vals.Length; i++)
+            for (int i = 50; i < vals.Length; i++)
             {
                 byte hByte = frames[i * 2 + 1];
                 byte lByte = frames[i * 2 + 0];
@@ -77,32 +77,60 @@ namespace ConsoleVisualizer
                 Ys[i] = vals[i];
 
                 Ys2 = FFT(Ys);
-                Ys2.Take(Ys2.Length / 2).ToArray();
+                Ys2.Take(Ys2.Length / 3).ToArray();
 
-                if (counter % 20 == 0 && n<=countOfLines)
+                if(counter % (4*symbol.Length) == 0 && n <= countOfLines)
                 {
                     n++;
-                    DrawGraph(Ys2[i]);
+                    DrawGraph(Ys2[i/3]/2);
                 }
                 counter++;
             }
         }
 
+        static int x = countOfLines, y = maxValue;
+        static bool[,] test = new bool[x + 1, y + 1];
+
         static void DrawGraph(double Height)
         {
-            int n = 0;
-            for (int i = 0; i < Math.Abs(Height *sensivity); i++)
+                {
+                    int n = 0;
+                    for (int i = 0; i < Math.Abs(Height * sensivity); i++)
+                    {
+                        if (n >= maxValue)
+                            break;
+                        test[actuL, n]=true;
+                        n++;
+                    }
+                    actuL++;
+                }
+        }
+
+        static void DrawVertical()
+        {
+            for(int i = maxValue; i>0; i--)
             {
-                if (n > maxValue)
-                    break;
-                sb.Append(symbol);
-                n++;
+                for(int j = 0; j<countOfLines; j++)
+                {
+                    if (test[j, i])
+                    {
+                        sb.Append(symbol);
+                        test[j, i] = false;
+                        if(i==y-1 && j==x/20)
+                        {
+                            Random rnd = new Random();
+                            Console.ForegroundColor = (ConsoleColor)rnd.Next(1, 15);
+                        }
+                    }
+                    else
+                        for(int a =0; a<symbol.Length; a++)
+                            sb.Append(' ');
+                }
+                sb.Append('\n');
             }
-            sb.Append('\n');
         }
 
         static void wi_DataAvailable(object sender, WaveInEventArgs e)
-
         {
             bwp.AddSamples(e.Buffer, 0, e.BytesRecorded);
         }
@@ -121,7 +149,7 @@ namespace ConsoleVisualizer
             for (int i = 0; i < data.Length; i++)
             {
                 fft[i] = fftComplex[i].Magnitude; // back to double
-                //fft[i] = Math.Log10(fft[i]); // convert to dB
+               // fft[i] = Math.Log10(fft[i]); // convert to dB
             }
 
             return fft;
